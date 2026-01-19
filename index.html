@@ -1251,33 +1251,14 @@
 <script>
 const namespace = 'nkh-github-exlude';
 
-// 🔴 Tổng lượt đã vào (tính cả offline)
-fetch(`https://api.countapi.xyz/hit/${namespace}/total`);
-
-// 🟢 Online (mỗi 30s sẽ reset)
-const onlineKey = 'online-' + Math.floor(Date.now() / 30000);
-fetch(`https://api.countapi.xyz/hit/${namespace}/${onlineKey}`);
-
-function updateStats() {
-  // online
-  fetch(`https://api.countapi.xyz/info/${namespace}/${onlineKey}`)
-    .then(r => r.json())
-    .then(d => {
-      document.getElementById('online').innerText = d.value || 0;
-    });
-
-  // total
-  fetch(`https://api.countapi.xyz/info/${namespace}/total`)
-    .then(r => r.json())
-    .then(d => {
-      const total = d.value || 0;
-      const online = parseInt(document.getElementById('online').innerText) || 0;
-      document.getElementById('offline').innerText = Math.max(total - online, 0);
-    });
-}
-
-setInterval(updateStats, 3000);
-updateStats();
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-805GHPRGCP"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-805GHPRGCP');
 </script>
 
 </body></html>
+
