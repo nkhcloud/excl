@@ -1,14 +1,12 @@
 <!DOCTYPE html>
-<!-- saved from url=(0032)https://nkhcloud.github.io/excl/ -->
 <html lang="vi" data-theme="ocean"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
     
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Dataset Analytics</title>
     <link rel="preconnect" href="https://fonts.googleapis.com/">
     <link rel="preconnect" href="https://fonts.gstatic.com/" crossorigin="">
-    <link href="./Dataset Analytics_files/css2" rel="stylesheet">
-    <link href="./Dataset Analytics_files/css2(1)" rel="stylesheet">
-    <script src="./Dataset Analytics_files/jszip.min.js.tải xuống"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
     <style>
         :root {
             /* Base Theme: Neon Glass */
@@ -1228,6 +1226,11 @@
 
         function readZipFile(file) {
             showLoading(true);
+            if (typeof JSZip === 'undefined') {
+                alert('Không tải được thư viện JSZip. Vui lòng kiểm tra kết nối mạng hoặc thử tải lại trang.');
+                showLoading(false);
+                return;
+            }
             const reader = new FileReader();
             reader.onload = (e) => {
                 JSZip.loadAsync(e.target.result).then(zip => {
