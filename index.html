@@ -961,6 +961,14 @@
                     <div class="stat-value" id="lastBoxId">-</div>
                     <div class="stat-label">Last ID Box</div>
                 </div>
+                <div class="stat-card" style="border-color: rgba(255, 193, 7, 0.35);">
+                    <div class="stat-value" id="duplicate100">0</div>
+                    <div class="stat-label">Duplicate 100%</div>
+                </div>
+                <div class="stat-card" style="border-color: rgba(255, 152, 0, 0.35);">
+                    <div class="stat-value" id="duplicate99">0</div>
+                    <div class="stat-label">Duplicate 99%</div>
+                </div>
             </div>
 
             <!-- Details Dropdown -->
@@ -1148,6 +1156,69 @@
         let excludeLabels = ['_corrupt'];
         let lastFilteredImages = [];
 
+        function parseBoxCoordinate(box, attrName) {
+            const value = parseFloat(box.getAttribute(attrName));
+            return Number.isFinite(value) ? value : null;
+        }
+
+        function calculateIoU(boxA, boxB) {
+            const left = Math.max(boxA.xtl, boxB.xtl);
+            const top = Math.max(boxA.ytl, boxB.ytl);
+            const right = Math.min(boxA.xbr, boxB.xbr);
+            const bottom = Math.min(boxA.ybr, boxB.ybr);
+
+            const intersectionWidth = Math.max(0, right - left);
+            const intersectionHeight = Math.max(0, bottom - top);
+            const intersectionArea = intersectionWidth * intersectionHeight;
+
+            const areaA = Math.max(0, boxA.xbr - boxA.xtl) * Math.max(0, boxA.ybr - boxA.ytl);
+            const areaB = Math.max(0, boxB.xbr - boxB.xtl) * Math.max(0, boxB.ybr - boxB.ytl);
+            const unionArea = areaA + areaB - intersectionArea;
+
+            if (unionArea <= 0) return 0;
+            return intersectionArea / unionArea;
+        }
+
+        function analyzeDuplicateBoxes(images) {
+            const exactThreshold = 0.999999;
+            const nearThreshold = 0.99;
+            const sampleLimit = 12;
+
+            const result = {
+                exactCount: 0,
+                nearCount: 0,
+                samples: []
+            };
+
+            images.forEach(img => {
+                const boxes = (img.boxCoords || []).filter(b =>
+                    Number.isFinite(b.xtl) && Number.isFinite(b.ytl) &&
+                    Number.isFinite(b.xbr) && Number.isFinite(b.ybr) &&
+                    b.xbr > b.xtl && b.ybr > b.ytl
+                );
+
+                for (let i = 0; i < boxes.length; i++) {
+                    for (let j = i + 1; j < boxes.length; j++) {
+                        const iou = calculateIoU(boxes[i], boxes[j]);
+
+                        if (iou >= exactThreshold) {
+                            result.exactCount++;
+                            if (result.samples.length < sampleLimit) {
+                                result.samples.push(`Frame ${img.frameLabel}: Box ${boxes[i].id} & ${boxes[j].id} (100%)`);
+                            }
+                        } else if (iou >= nearThreshold) {
+                            result.nearCount++;
+                            if (result.samples.length < sampleLimit) {
+                                result.samples.push(`Frame ${img.frameLabel}: Box ${boxes[i].id} & ${boxes[j].id} (${(iou * 100).toFixed(2)}%)`);
+                            }
+                        }
+                    }
+                }
+            });
+
+            return result;
+        }
+
         // UI Elements
         const uploadArea = document.getElementById('uploadArea');
         const fileInput = document.getElementById('fileInput');
@@ -1280,6 +1351,17 @@
                         const boxes = Array.from(img.getElementsByTagName('box'));
                         const labels = boxes.map(b => b.getAttribute('label') || 'unknown');
                         const boxIds = boxes.map(b => parseInt(b.getAttribute('id'))).filter(id => !isNaN(id));
+                        const frameIdRaw = parseInt(img.getAttribute('id'));
+                        const frameLabel = Number.isFinite(frameIdRaw) ? frameIdRaw : (img.getAttribute('name') || '-');
+
+                        const boxCoords = boxes.map(b => ({
+                            id: parseInt(b.getAttribute('id')) || 0,
+                            label: b.getAttribute('label') || 'unknown',
+                            xtl: parseBoxCoordinate(b, 'xtl'),
+                            ytl: parseBoxCoordinate(b, 'ytl'),
+                            xbr: parseBoxCoordinate(b, 'xbr'),
+                            ybr: parseBoxCoordinate(b, 'ybr')
+                        }));
 
                         // Check for pass attribute (simplified logic from original)
                         let hasPass = false;
@@ -1290,11 +1372,13 @@
                         });
 
                         return {
-                            id: parseInt(img.getAttribute('id')),
+                            id: frameIdRaw,
+                            frameLabel,
                             name: img.getAttribute('name'),
                             totalBoxes: boxes.length,
                             labels: labels,
                             boxIds: boxIds,
+                            boxCoords: boxCoords,
                             exclBoxes: labels.filter(l => l === '_excl_area').length,
                             hasPass: hasPass,
                             skipCount: labels.filter(l => l.includes('skip')).length
@@ -1421,11 +1505,15 @@
             // Cap exclude at total (in case of double counting overlap logic)
             if (excludeCount > totalBoxes) excludeCount = totalBoxes;
 
+            const duplicateStats = analyzeDuplicateBoxes(filtered);
+
             // Render Stats
             animateValue('totalBoxes', totalBoxes);
             animateValue('excludedBoxes', excludeCount);
             animateValue('finalCount', totalBoxes - excludeCount);
             animateValue('validFrames', validFrames);
+            animateValue('duplicate100', duplicateStats.exactCount);
+            animateValue('duplicate99', duplicateStats.nearCount);
 
             // Min/Max Box IDs
             const allBoxIds = filtered.flatMap(img => img.boxIds || []);
@@ -1442,13 +1530,35 @@
                 if (lastIdEl) lastIdEl.textContent = '-';
             }
 
-            renderDetails(filtered);
+            renderDetails(filtered, duplicateStats);
             resultsSection.style.display = 'block';
         }
 
-        function renderDetails(images) {
+        function renderDetails(images, duplicateStats) {
             const container = document.getElementById('detailsContent');
             container.innerHTML = '';
+
+            if (duplicateStats) {
+                const summary = document.createElement('div');
+                summary.className = 'detail-row';
+                summary.innerHTML = `
+                <span class="label-name">Duplicate Boxes (100% / 99%)</span>
+                <span class="label-badge">${duplicateStats.exactCount} / ${duplicateStats.nearCount}</span>
+            `;
+                container.appendChild(summary);
+
+                if (duplicateStats.samples.length > 0) {
+                    duplicateStats.samples.forEach(line => {
+                        const item = document.createElement('div');
+                        item.className = 'detail-row';
+                        item.innerHTML = `
+                        <span class="label-name" style="font-size: 0.82em; opacity: 0.85;">${line}</span>
+                        <span class="label-badge">●</span>
+                    `;
+                        container.appendChild(item);
+                    });
+                }
+            }
 
             // Group by label
             const counts = {};
